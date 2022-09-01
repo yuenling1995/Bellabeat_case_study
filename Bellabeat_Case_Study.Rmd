@@ -1,0 +1,304 @@
+---
+title: "Bellabeat Case Study"
+output: html_document
+date: '2022-08-19'
+---
+
+### Scenario
+You are a junior data analyst working on the marketing analyst team at Bellabeat, a high-tech manufacturer of health-focused products for women. Bellabeat is a successful small company, but they have the potential to become a large player in the global smart device market. Urška Sršen, cofounder and Chief Creative Officer of Bellabeat, believes that analyzing smart device fitness data could help unlock new growth opportunities for the company. You have been asked to focus on one of Bellabeat's products and analyze smart device data to gain insight into how consumers are using their smart devices. The insights you discover will then help guide marketing strategy for the company.
+
+### 1. Ask
+The goal of this case study is to analyze non-Bellabeat smart device usage data that tracks physical activity, sleep, heart rate, and weight. I will identify trends of the user data and gain insights, apply them and make recommendations for Bellabeat's marketing strategy. I will present my analysis and recommendations to the Bellabeat executive team.
+
+### 2. Prepare
+The data that will be used is a public dataset named "FitBit Fitness Tracker Data". This dataset is stored on Kaggle for public share and use. It contains personal fitness tracker from 33 fitbit users, they all consented to the submission of personal tracker data for a period of 31 days between 4.12.2016 and 5.12.2016. This dataset has 18 CSV files that documents minute-level output for physical activity, heart rate, and sleep monitoring. Files that track minute-level calories, activity intensity, and steps are stored in both long and wide format, and the rest are in long format. My concern is even though long-format data is great for analysis purposes, it's very difficult to read and understand. Besides, some CSV files have incomplete or missing data, such as "weightLogInfo_merged.csv" and "sleepDay_merged.csv", which could potentially skew the accuracy of analysis results. Another limitation is the small sample size and timestamp of this dataset, which might not be representable enough to bring insights for the overall user population. For this case study, I will focus on merging and analyzing the FFitbit daily activities & sleep data, and identify trends to bring out insights that can be helpful to inform Bellabeat's marketing decisions. 
+
+### 3. Process
+
+#### load libraries
+
+```{r setup, eval = F}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(dplyr)
+library(ggplot2)
+library(lubridate)
+```
+
+#### Import and Clean Data
+
+```{r, eval = F, message = F}
+daily_activity_merged <- 
+  read_csv("./Fitabase Data/dailyActivity_merged.csv") %>% 
+  unique() %>% 
+  drop_na() %>% 
+  janitor::clean_names() %>% 
+  rename(activity_day = activity_date)
+
+calories <-
+  read_csv("./Fitabase Data/dailyCalories_merged.csv") %>% 
+  unique() %>% 
+  drop_na() %>% 
+  janitor::clean_names()
+
+intensity <-
+  read_csv("./Fitabase Data/dailyIntensities_merged.csv") %>% 
+  unique() %>% 
+  drop_na() %>% 
+  janitor::clean_names()
+
+steps <-
+  read_csv("./Fitabase Data/dailySteps_merged.csv") %>% 
+  unique() %>% 
+  drop_na() %>% 
+  janitor::clean_names() %>% 
+  rename(total_steps = step_total)
+
+sleep <- 
+  read_csv("./Fitabase Data/sleepDay_merged.csv") %>% 
+  unique() %>% 
+  drop_na() %>% 
+  janitor::clean_names() %>% 
+  rename(activity_day = sleep_day) %>% 
+  mutate(activity_day = substr(activity_day,1,9))
+
+# since daily activity table includes calories, intensity, and steps info
+# we're going to merge them together
+df1 <- merge(daily_activity_merged, calories, by = c("id", "activity_day", "calories"))
+df2 <- merge(daily_activity_merged, intensity, by = c("id", "activity_day", "sedentary_minutes", "lightly_active_minutes","fairly_active_minutes","very_active_minutes", "sedentary_active_distance", "light_active_distance", "moderately_active_distance", "very_active_distance"))
+df3 <- merge(daily_activity_merged, steps, by = c("id", "activity_day", "total_steps"))
+
+df_merge <- merge(df1, df2, by = c("id", "activity_day", "calories", "total_steps", "sedentary_minutes", "lightly_active_minutes","fairly_active_minutes","very_active_minutes", "sedentary_active_distance", "light_active_distance", "moderately_active_distance", "very_active_distance", "total_distance", "tracker_distance", "logged_activities_distance"))
+df_merge2 <- merge(df_merge, df3, by = c("id", "activity_day", "calories", "total_steps", "sedentary_minutes", "lightly_active_minutes","fairly_active_minutes","very_active_minutes", "sedentary_active_distance", "light_active_distance", "moderately_active_distance", "very_active_distance", "total_distance", "tracker_distance", "logged_activities_distance"))
+
+# finally join the merged table with sleep data
+df_daily <- left_join(df_merge2, sleep, by = c("id", "activity_day"))
+```
+
+#### Data Preview
+
+```{r,  eval = F, message = F}
+str(df_daily)
+head(df_daily)
+summary(df_daily)
+```
+
+check the number of unique IDs and rows 
+
+```{r,  eval = F,message = F}
+# 33 unique IDs, 940 rows
+length(unique(df_daily$id))
+nrow(df_daily)
+```
+
+### 4. Analyze and Share
+
+First let's examine the correlations between total steps taken and total calories burned on the daily basis. A majority of people walk fewer than 15000 steps and burn between 1000-3500 calories. With the blue line that notes the overall trend, it's clearly seen that there's a positive relationship between these 2 variables, which entails that as users take more steps each day, they burn more calories as well. 
+
+```{r,  eval = F,message = F}
+# 33 unique IDs, 940 rows
+df_daily %>% 
+  filter(total_steps>0) %>% 
+  ggplot(aes(x = total_steps, y = calories)) +
+  geom_point(alpha = 0.6) + 
+  geom_smooth() +
+  ggtitle("Daily Total Steps vs. Total Calories Burned") +
+  labs(x = "Daily Total Steps", y = "Total Calories")
+```
+Next let's investigate the correlations between daily total minutes asleep and total calories burned. We can see that a majority of users sleep around 400 minutes/8 hours and burn ~2500 calories. However, when users sleep either fewer than/more than 8 hours, they burn fewer calories. This trend aligns with the public guideline that suggests 7-9 hours of sleep each day, the graph shows people who are sleep-deprived or oversleep tend to have a slower calories burning rate. 
+
+```{r,  eval = F,message = F}
+# 33 unique IDs, 940 rows
+df_daily %>% 
+  filter(total_steps>0) %>%
+  drop_na() %>% 
+  ggplot(aes(x = total_minutes_asleep, y = calories)) +
+  geom_point(alpha = 0.6) +
+  geom_smooth() +
+  ggtitle("Daily Total Minutes Asleep vs. Total Calories Burned") +
+  labs(x = "Total Minutes Asleep", y = "Total Calories")
+```
+Now let's examine if there's any correlations between the daily total steps taken and the amount of sleep per day. The graph below indicates there is no significant relationship between these 2 variables, which means as users take more steps each day, even though they tend to burn more calories, their sleeping quality doesn't increase as well. 
+
+```{r,  eval = F,message = F}
+# 33 unique IDs, 940 rows
+df_daily %>% 
+  filter(total_steps>0) %>%
+  drop_na() %>% 
+  ggplot(aes(x = total_steps, y = total_minutes_asleep)) +
+  geom_point(alpha = 0.6) +
+  geom_smooth() +
+  ggtitle("Daily Total Steps vs. Total Minutes Asleep") +
+  labs(x = "Daily Total Steps", y = "Total Minutes Asleep")
+```
+
+After identifying these general trends, let's dive deeper into the characteristics of specific variables in this dataset. In the merged table, user data is tracked via their activity intensity levels every day: sedentary, lightly active, fairly active, and very active. We can group users into these 4 sub-categories based on their average daily steps: 
+- Sedentary: <4000 steps per day
+- Lightly Active: between 4000 and 7499 steps
+- Fairly Active: between 7500 and 9999 steps
+- Very Active: >=10000 steps
+
+The following graph shows the spread of user activity intensity levels and it's skewed to the left, which indicates that a majority of users is less active/take fewer steps. Let's look at the distribution more closely in the next chart. 
+
+```{r,  eval = F,message = F}
+df_daily %>% 
+  mutate(
+    active_level = 
+      case_when(
+        total_steps < 4000 ~ "sedentary",
+        total_steps >= 4000 & total_steps < 7499 ~ "lightly active",
+        total_steps >= 7500 & total_steps < 9999 ~ "fairly active",
+        total_steps >= 10000 ~ "very active"
+      ) 
+  ) %>% 
+  ggplot(aes(x = total_steps, fill = active_level)) +
+  geom_histogram(position = "dodge", bins = 25) +
+  ggtitle("Distribution of User Active Intensity Level") +
+  labs(x = "Daily Total Steps", y = "Count")
+```
+
+```{r, eval = F, message = F}
+user <- 
+  df_daily %>% 
+  group_by(id) %>% 
+  summarize(mean_steps = mean(total_steps)) %>% 
+  mutate(
+    active_level = 
+      case_when(
+        mean_steps < 4000 ~ "sedentary",
+        mean_steps >= 4000 & mean_steps < 7499 ~ "lightly active",
+        mean_steps >= 7500 & mean_steps < 9999 ~ "fairly active",
+        mean_steps >= 10000 ~ "very active"
+      )
+  ) 
+
+```
+
+This graph illustrates the distribution of user types based on their activity intensity levels: 27% of users are sedentary, 33% of users are lightly active, 27% of users are fairly active, and 21% of users are very active. As we can see, about 60% of users are only moderately active. 
+
+```{r,  eval = F,message = F}
+user %>% 
+  count(active_level) %>% 
+  ggplot(aes(x = fct_reorder(active_level, c("sedentary", "lightly active", "fairly active", "very active")), 
+             y = n, fill = active_level)) +
+  geom_bar(stat = "identity") +
+  ggtitle("Distribution of User Type") +
+  labs(x = "", y = "count") +
+  geom_label(aes(label = paste(round(n/33, 2)*100, "%", sep = "")),
+             vjust = 0.3, fill = "grey") +
+  theme(legend.position = "none")
+```
+Similarly, let's classify users by the amount of their sleep in hours and check the distribution:
+- undersleep: < 7 hours
+- normal sleep: between 7 and 9 hours
+- oversleep: over 9 hours
+
+```{r, eval = F, message = F}
+sleep_type <- 
+  df_daily %>% 
+  drop_na() %>% 
+  mutate(
+    sleep_level = 
+      case_when(
+        total_minutes_asleep < 420 ~ "undersleep",
+        total_minutes_asleep >= 420 & total_minutes_asleep < 539 ~ "normal sleep",
+        total_minutes_asleep >= 540  ~ "oversleep"
+      ),
+    total_hour_asleep = round(total_minutes_asleep/60,1)
+  )
+```
+
+The following graphs indicate the spread of user sleep (in hours) as normally distributed (a bell-shaped curve), with a peak at ~7 hours of sleep.It then identifies the distribution of users' sleeping habit: on average, 39% of users sleep fewer than 7 hours, 30% of users sleep between 7 and 9 hours, and only 3% of users sleep over 9 hours. From this graph we can see a significant proportion of users are sleep-deprived, which may affect their lifestyle such as daily exercise/activity and calories burned each day. 
+
+```{r,  eval = F,message = F}
+sleep_type %>% 
+  ggplot(aes(x = total_hour_asleep, fill = sleep_level)) +
+  geom_histogram(position = "dodge", bins = 30) +
+  ggtitle("Distribution of User Sleeping Habit") +
+  labs(x = "Total Hours Asleep", y = "Count")
+
+```
+
+```{r,  eval = F,message = F}
+sleep_type %>% 
+  group_by(id) %>% 
+  summarize(mean_sleep = mean(total_hour_asleep)) %>% 
+  mutate(
+  sleep_level = 
+    case_when(
+      mean_sleep < 7.0 ~ "undersleep",
+      mean_sleep >= 7.0 & mean_sleep < 9.0 ~ "normal sleep",
+      mean_sleep >= 9.0  ~ "oversleep")
+    ) %>% 
+  count(sleep_level) %>% 
+  ggplot(aes(x = factor(sleep_level, level = c("undersleep", "normal sleep", "oversleep")), 
+             y = n, fill = sleep_level)) +
+  geom_bar(stat = "identity") +
+  ggtitle("Distribution of User Sleeping Habit") +
+  labs(x = "", y = "count") +
+  geom_label(aes(label = paste(round(n/33, 2)*100, "%", sep = "")),
+             vjust = 0.3, fill = "grey") +
+  theme(legend.position = "none")
+```
+
+In the earlier graph we found no significant relationship between daily taken steps and sleep quality. In order to confirm this finding, we can re-generate this distribution and examine its correlations between groups: users of different activity intensity levels vs. users of various sleeping quality. 
+
+```{r, eval = F,message = F}
+df_daily_groups <- 
+  df_daily %>% 
+    drop_na() %>% 
+    filter(total_steps>0) %>% 
+    mutate(
+      active_level = 
+        factor(
+          case_when(
+            total_steps < 4000 ~ "sedentary",
+            total_steps >= 4000 & total_steps < 7499 ~ "lightly active",
+            total_steps >= 7500 & total_steps < 9999 ~ "fairly active",
+            total_steps >= 10000 ~ "very active"), 
+          levels = c("sedentary", "lightly active", "fairly active", "very active")),
+      sleep_level = 
+        factor(
+          case_when(
+            total_minutes_asleep < 420 ~ "undersleep",
+            total_minutes_asleep >= 420 & total_minutes_asleep < 539 ~ "normal sleep",
+            total_minutes_asleep >= 540  ~ "oversleep"),
+          levels = c("undersleep", "normal sleep", "oversleep")),
+      total_hour_asleep = round(total_minutes_asleep/60,1)
+        ) %>% 
+    select(1:4, 17, 19, 20, 21) %>% 
+    relocate(id, activity_day, total_steps, active_level, calories, total_minutes_asleep, total_hour_asleep, sleep_level)
+
+```
+
+As we can tell from the following chart, among the 4 different activity intensity levels (based on daily steps), there is no significant differences of sleeping quality between the groups, each group represents a similar proportion of undersleep, normal sleep, and oversleep users.
+
+```{r, eval = F,message = F}
+df_daily_groups %>% 
+  group_by(sleep_level, active_level) %>% 
+  summarize(count = n()) %>% 
+  ggplot(aes(x = sleep_level, y = count, fill = sleep_level)) +
+  geom_bar(stat = "identity") +
+  ggtitle("Active Level vs. Sleep Quality") +
+  labs(x = "", y = "Count") +
+  theme(
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    legend.position = "none") +
+  facet_wrap(~active_level, nrow = 1) 
+  
+```
+
+### 5. Act
+
+This analysis on the smart device usage data brings some insights on how users daily habits of physical activity affect their health and sleep. As users take more steps every day, they tend to burn more calories and sleep more. My recommendation for Bellabeat's marketing strategy is we should focus on how our product helps women track their wellness, develop healthier lifestyles, and maintain their fitness goals. For example, by grouping users into different types based on their sleeping habits and active levels & analyze each groups' user habits, Bellabeat can better track their health data and make more effective wellness suggestions. This can be done by the Bellabeat app, we can add a new feature that not only allows users to understand their current habits, but also make tailored recommendations to help users make healthier decisions, and celebrate users' health achievements through inspiring quotes and customized fitness schedules.
+
+However, I think this dataset can only be used as a reference and we should track our own device data for more accurate results. There are several limitations of this dataset, as I have mentioned before, the small sample size and outdated timestamp. In addition, the lack of demographics information makes it difficult to know whether these users have similar or very different lifestyles, which can dramatically influence the accuracy of analysis. 
+
+
+
+
+
+
+
+
+
